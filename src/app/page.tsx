@@ -106,28 +106,20 @@ export default function Home() {
     overscan: 10,
   });
 
-  // TIP #4: Infinite Scroll Trigger
-  // When the user scrolls to the near-bottom of our current virtual items, load more.
-  useEffect(() => {
-    const lastItem = rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1];
-    if (!lastItem) return;
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const lastItemIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
 
+  // TIP #4: Infinite Scroll Trigger (Fixed for stability)
+  useEffect(() => {
     if (
-      lastItem.index >= data.length - 15 && 
+      lastItemIndex >= data.length - 10 && 
       nextCursor && 
       !isFetchingNextPage && 
       !isLoading
     ) {
       handleFetch(search, true);
     }
-  }, [
-    rowVirtualizer.getVirtualItems(), 
-    data.length, 
-    nextCursor, 
-    isFetchingNextPage, 
-    isLoading, 
-    search
-  ]);
+  }, [lastItemIndex, data.length, nextCursor, isFetchingNextPage, isLoading, search]);
 
   if (!mounted) return null;
 

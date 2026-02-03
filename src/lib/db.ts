@@ -5,13 +5,17 @@ let _db: Client | null = null;
 export const getDb = () => {
   if (_db) return _db;
 
-  const url = process.env.TURSO_DATABASE_URL;
+  const rawUrl = process.env.TURSO_DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN;
 
-  if (!url || !authToken) {
+  if (!rawUrl || !authToken) {
     console.error("CRITICAL: Missing Turso Environment Variables");
-    throw new Error("Database configuration is missing. Please check Cloudflare Environment Variables.");
+    throw new Error("Database configuration is missing.");
   }
+
+  // ROOT FIX: Cloudflare Edge requires https:// for fetch. 
+  // libsql:// causes certain SDK versions to try to use sockets/XHR.
+  const url = rawUrl.replace("libsql://", "https://");
 
   _db = createClient({
     url: url,
