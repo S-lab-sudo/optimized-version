@@ -2,15 +2,30 @@ import { NextResponse } from "next/server";
 
 export const runtime = "edge";
 
-// ROOT FIX: Direct HTTP calls to Turso, bypassing @libsql/client entirely.
-// The SDK has bundling issues with next-on-pages. Native fetch always works.
-async function queryTurso(sql: string, args: any[] = []) {
-  const url = process.env.TURSO_DATABASE_URL?.replace("libsql://", "https://");
-  const token = process.env.TURSO_AUTH_TOKEN;
-
-  if (!url || !token) {
-    throw new Error("Missing database configuration");
+// For Cloudflare, env vars may come from different sources
+function getEnvVar(name: string): string | undefined {
+  // Try process.env first (works in Node.js and some Edge configs)
+  if (typeof process !== 'undefined' && process.env && process.env[name]) {
+    return process.env[name];
   }
+  return undefined;
+}
+
+async function queryTurso(sql: string, args: any[] = []) {
+  const rawUrl = getEnvVar('TURSO_DATABASE_URL');
+  const token = getEnvVar('TURSO_AUTH_TOKEN');
+
+  if (!rawUrl || !token) {
+    console.error("ENV CHECK:", { 
+      hasUrl: !!rawUrl, 
+      hasToken: !!token,
+      processEnvKeys: typeof process !== 'undefined' ? Object.keys(process.env || {}).slice(0, 10) : 'no process'
+    });
+    throw new Error("Missing database configuration. Check Cloudflare env vars.");
+  }
+
+  // Convert libsql:// to https:// for HTTP access
+  const url = rawUrl.replace("libsql://", "https://");
 
   const response = await fetch(url, {
     method: "POST",
@@ -25,18 +40,16 @@ async function queryTurso(sql: string, args: any[] = []) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Turso error: ${response.status} - ${text}`);
+    throw new Error(`Turso HTTP error: ${response.status} - ${text}`);
   }
 
   const data = await response.json();
-  
-  // Turso returns results in a specific format
   const result = data[0];
+  
   if (result.error) {
     throw new Error(result.error.message);
   }
 
-  // Convert Turso's response format to rows
   const columns = result.results?.columns || [];
   const values = result.results?.rows || [];
   
@@ -60,7 +73,6 @@ export async function GET(request: Request) {
   try {
     const start = performance.now();
     
-    // Build query with cursor-based pagination
     let query = search 
       ? "SELECT * FROM users WHERE (name LIKE ? OR email LIKE ?)" 
       : "SELECT * FROM users";
