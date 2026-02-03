@@ -76,10 +76,9 @@ export default function Home() {
     if (!mounted) return;
     const timer = setTimeout(() => {
       handleFetch(search, false);
-      // TIP #15: URL-State Synchronization - Update URL on search
       const newUrl = search ? `?q=${encodeURIComponent(search)}` : window.location.pathname;
       window.history.replaceState(null, '', newUrl);
-    }, 300);
+    }, 500); // Increased to 500ms for stability
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, mounted]);
@@ -91,6 +90,9 @@ export default function Home() {
     // TIP #4 & #31: Robust Request Shielding
     if (isNextPage && (!nextCursor || isFetchingNextPage)) return;
     
+    // GUARD: Don't allow pagination if a new search is already in progress or pending
+    if (isNextPage && query !== lastQueryRef.current) return;
+
     // Cancel any in-flight request for a new search
     if (!isNextPage && abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -98,14 +100,16 @@ export default function Home() {
     
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    lastQueryRef.current = query;
+    
+    if (!isNextPage) {
+      lastQueryRef.current = query;
+    }
 
     if (isNextPage) {
       setIsFetchingNextPage(true);
     } else {
       setIsLoading(true);
       setNextCursor(null);
-      // Immediately clear data for new search to prevent "zombie" load mores
       setData([]);
     }
     
@@ -122,7 +126,7 @@ export default function Home() {
       const { data: rows, latency, nextCursor: newCursor } = await res.json();
       
       // SHIELD: Only update state if the query is still relevant
-      if (query !== lastQueryRef.current && !isNextPage) return;
+      if (query !== lastQueryRef.current) return;
 
       if (isNextPage) {
         setData(prev => [...prev, ...rows]);
@@ -133,8 +137,8 @@ export default function Home() {
       setNextCursor(newCursor);
       setDbLatency(latency);
       setStatus(`DB Query: ${latency}ms | Total Records Loaded: ${(isNextPage ? data.length + rows.length : rows.length).toLocaleString()}`);
-    } catch (err: any) {
-      if (err.name === 'AbortError') return;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       const message = err instanceof Error ? err.message : 'Unknown error';
       setStatus("Error: " + message);
     } finally {
@@ -152,8 +156,6 @@ export default function Home() {
     overscan: 10,
   });
 
-  const virtualItems = rowVirtualizer.getVirtualItems();
-  const lastItemIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
 
   // REMOVED: Auto-Infinite Scroll Trigger that caused request flooding
   // We are now switching to Manual Load + Hover Prefetching (Tip #6 & #9)
@@ -233,7 +235,11 @@ export default function Home() {
                 value={search}
                 placeholder="Type name to test Indexed O(log n) speed..."
                 className="h-16 pl-14 pr-6 rounded-2xl border-neutral-200 dark:border-neutral-800 bg-white/40 dark:bg-neutral-900/40 backdrop-blur-md focus-visible:ring-emerald-500/50 text-base font-medium shadow-inner"
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  // TIP #31: Immediate cleanup on search change to prevent pagination storms
+                  setNextCursor(null);
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && handleFetch(search)}
               />
             </div>
@@ -348,11 +354,11 @@ export default function Home() {
                         size="lg"
                         className="h-14 px-8 rounded-2xl font-bold tracking-tight border-neutral-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-neutral-800 hover:scale-[1.02] transition-all group"
                         disabled={isFetchingNextPage}
-                        onMouseEnter={() => {
-                          if (!isFetchingNextPage && !isLoading) {
-                            handleFetch(search, true);
-                          }
-                        }}
+                      onMouseEnter={() => {
+                        if (!isFetchingNextPage && !isLoading && nextCursor && search === lastQueryRef.current) {
+                          handleFetch(search, true);
+                        }
+                      }}
                         onClick={() => {
                           if (!isFetchingNextPage && !isLoading) {
                             handleFetch(search, true);
