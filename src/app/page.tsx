@@ -84,26 +84,46 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, mounted]);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const lastQueryRef = useRef<string>("");
+
   const handleFetch = async (query = "", isNextPage = false) => {
+    // TIP #4 & #31: Robust Request Shielding
     if (isNextPage && (!nextCursor || isFetchingNextPage)) return;
     
+    // Cancel any in-flight request for a new search
+    if (!isNextPage && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    lastQueryRef.current = query;
+
     if (isNextPage) {
       setIsFetchingNextPage(true);
     } else {
       setIsLoading(true);
       setNextCursor(null);
+      // Immediately clear data for new search to prevent "zombie" load mores
+      setData([]);
     }
     
     setStatus(isNextPage ? "Fetching next page..." : "Querying Turso Edge DB...");
     
     try {
-      // TIP #4: Cursor Pagination Logic
       const cursorParam = isNextPage ? `&cursor=${nextCursor}` : '';
-      const res = await fetch(`/api/data?search=${query}&limit=50${cursorParam}`);
+      const res = await fetch(`/api/data?search=${query}&limit=50${cursorParam}`, {
+        signal: controller.signal
+      });
+      
       if (!res.ok) throw new Error("Database Query Failed");
       
       const { data: rows, latency, nextCursor: newCursor } = await res.json();
       
+      // SHIELD: Only update state if the query is still relevant
+      if (query !== lastQueryRef.current && !isNextPage) return;
+
       if (isNextPage) {
         setData(prev => [...prev, ...rows]);
       } else {
@@ -113,12 +133,15 @@ export default function Home() {
       setNextCursor(newCursor);
       setDbLatency(latency);
       setStatus(`DB Query: ${latency}ms | Total Records Loaded: ${(isNextPage ? data.length + rows.length : rows.length).toLocaleString()}`);
-    } catch (err: unknown) {
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       const message = err instanceof Error ? err.message : 'Unknown error';
       setStatus("Error: " + message);
     } finally {
-      setIsLoading(false);
-      setIsFetchingNextPage(false);
+      if (!controller.signal.aborted) {
+        setIsLoading(false);
+        setIsFetchingNextPage(false);
+      }
     }
   };
 
