@@ -37,6 +37,8 @@ export default function Home() {
   const [totalResultCount, setTotalResultCount] = useState(0);
   const [dbLatency, setDbLatency] = useState<number | null>(null);
   const [editingRow, setEditingRow] = useState<any>(null);
+  const [detailData, setDetailData] = useState<any>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [memUsage, setMemUsage] = useState<number | undefined>(undefined);
 
@@ -266,7 +268,22 @@ export default function Home() {
                             variant="ghost" 
                             size="sm"
                             className="h-10 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-neutral-400 hover:text-emerald-500 hover:bg-emerald-500/5 transition-all"
-                            onClick={() => setEditingRow(row)}
+                            onClick={async () => {
+                              setEditingRow(row);
+                              setIsLoadingDetail(true);
+                              try {
+                                // TIP #5: Fetch full details only on demand
+                                const res = await fetch(`/api/data/${row.id}`);
+                                if (res.ok) {
+                                  const { data } = await res.json();
+                                  setDetailData(data);
+                                }
+                              } catch (e) {
+                                console.error('Failed to load details');
+                              } finally {
+                                setIsLoadingDetail(false);
+                              }
+                            }}
                           >
                             Details
                           </Button>
@@ -291,7 +308,7 @@ export default function Home() {
         </div>
       </div>
 
-      <Dialog open={!!editingRow} onOpenChange={() => setEditingRow(null)}>
+      <Dialog open={!!editingRow} onOpenChange={() => { setEditingRow(null); setDetailData(null); }}>
         <DialogContent className="sm:max-w-xl rounded-[2.5rem] border-none bg-white/95 dark:bg-neutral-900/95 backdrop-blur-3xl p-0 overflow-hidden shadow-[0_32px_128px_-16px_rgba(0,0,0,0.5)]">
           <div className="p-10 space-y-8">
             <div className="flex items-center gap-4">
@@ -312,12 +329,20 @@ export default function Home() {
                  </div>
                  <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800">
                     <span className="text-[10px] font-black uppercase text-neutral-400 tracking-widest block mb-1">Commercial Value</span>
-                    <span className="text-lg font-bold text-emerald-500 font-mono">${editingRow?.salary?.toLocaleString() || '0'}</span>
+                    {isLoadingDetail ? (
+                      <Skeleton className="h-7 w-24" />
+                    ) : (
+                      <span className="text-lg font-bold text-emerald-500 font-mono">${detailData?.salary?.toLocaleString() || '0'}</span>
+                    )}
                  </div>
               </div>
               <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800">
                   <span className="text-[10px] font-black uppercase text-neutral-400 tracking-widest block mb-1">Bio / Profile String</span>
-                  <span className="text-sm text-neutral-500 leading-relaxed font-medium">{editingRow?.bio}</span>
+                  {isLoadingDetail ? (
+                    <Skeleton className="h-16 w-full" />
+                  ) : (
+                    <span className="text-sm text-neutral-500 leading-relaxed font-medium">{detailData?.bio || 'No bio available'}</span>
+                  )}
               </div>
             </div>
 

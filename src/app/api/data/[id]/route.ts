@@ -3,7 +3,6 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
-// Extend CloudflareEnv to include our custom vars
 interface Env {
   TURSO_DATABASE_URL: string;
   TURSO_AUTH_TOKEN: string;
@@ -13,14 +12,12 @@ async function queryTurso(sql: string, args: any[] = []) {
   let rawUrl: string | undefined;
   let token: string | undefined;
 
-  // Try Cloudflare bindings first
   try {
     const ctx = getRequestContext();
     const env = ctx.env as Env;
     rawUrl = env.TURSO_DATABASE_URL;
     token = env.TURSO_AUTH_TOKEN;
   } catch {
-    // Fallback to process.env for local development
     rawUrl = process.env.TURSO_DATABASE_URL;
     token = process.env.TURSO_AUTH_TOKEN;
   }
@@ -68,45 +65,33 @@ async function queryTurso(sql: string, args: any[] = []) {
   return { rows };
 }
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const search = searchParams.get("search") || "";
-  const cursor = searchParams.get("cursor") || null;
-  const limit = parseInt(searchParams.get("limit") || "50");
+// TIP #5: On-demand detail loading
+// This endpoint fetches the full row (including heavy fields like bio, salary)
+// only when the user clicks "View Details" on a specific row.
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
 
   try {
     const start = performance.now();
     
-    // TIP #5: Selective Column Loading
-    // Only fetch columns needed for list view. Heavy fields like 'bio' and 'salary' 
-    // are loaded on-demand when user clicks "View Details"
-    const listColumns = "id, name, email, role";
-    
-    let query = search 
-      ? `SELECT ${listColumns} FROM users WHERE (name LIKE ? OR email LIKE ?)` 
-      : `SELECT ${listColumns} FROM users`;
-    
-    const args: any[] = search ? [`%${search}%`, `%${search}%`] : [];
-
-    if (cursor) {
-      query += search ? " AND id > ?" : " WHERE id > ?";
-      args.push(cursor);
-    }
-
-    query += " ORDER BY id LIMIT ?";
-    args.push(limit);
-
-    const result = await queryTurso(query, args);
+    // Fetch ALL columns for detail view
+    const result = await queryTurso(
+      "SELECT * FROM users WHERE id = ?",
+      [id]
+    );
 
     const end = performance.now();
-    const rows = result.rows;
-    const nextCursor = rows.length === limit ? rows[rows.length - 1].id : null;
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
 
     return NextResponse.json({
-      data: rows,
+      data: result.rows[0],
       latency: Math.round(end - start),
-      count: rows.length,
-      nextCursor
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
