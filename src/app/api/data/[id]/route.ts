@@ -8,7 +8,7 @@ interface Env {
   TURSO_AUTH_TOKEN: string;
 }
 
-async function queryTurso(sql: string, args: any[] = []) {
+async function queryTurso(sql: string, args: (string | number)[] = []) {
   let rawUrl: string | undefined;
   let token: string | undefined;
 
@@ -54,8 +54,8 @@ async function queryTurso(sql: string, args: any[] = []) {
   const columns = result.results?.columns || [];
   const values = result.results?.rows || [];
   
-  const rows = values.map((row: any[]) => {
-    const obj: Record<string, any> = {};
+  const rows = values.map((row: (string | number | null)[]) => {
+    const obj: Record<string, string | number | null> = {};
     columns.forEach((col: string, i: number) => {
       obj[col] = row[i];
     });
@@ -93,7 +93,8 @@ export async function GET(
       data: result.rows[0],
       latency: Math.round(end - start),
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

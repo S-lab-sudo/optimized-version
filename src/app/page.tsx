@@ -1,24 +1,20 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { 
   Dialog, 
   DialogContent, 
-  DialogHeader, 
   DialogTitle, 
   DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Database, Search, RefreshCcw, Edit3, Settings2, Zap, CheckCircle2, SearchCode } from "lucide-react";
+import { Database, Search, RefreshCcw, Settings2, CheckCircle2, SearchCode } from "lucide-react";
 
 interface PerformanceWithMemory extends Performance {
   memory?: {
@@ -28,24 +24,34 @@ interface PerformanceWithMemory extends Performance {
   };
 }
 
+interface UserRow {
+  id: string;
+  name: string;
+  email: string;
+  role?: string;
+}
+
+interface DetailData extends UserRow {
+  bio?: string;
+  salary?: number;
+}
+
 export default function Home() {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<UserRow[]>([]);
   const [status, setStatus] = useState("System Optimized");
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
-  const [totalResultCount, setTotalResultCount] = useState(0);
   const [dbLatency, setDbLatency] = useState<number | null>(null);
-  const [editingRow, setEditingRow] = useState<any>(null);
-  const [detailData, setDetailData] = useState<any>(null);
+  const [editingRow, setEditingRow] = useState<UserRow | null>(null);
+  const [detailData, setDetailData] = useState<DetailData | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [memUsage, setMemUsage] = useState<number | undefined>(undefined);
 
   const parentRef = useRef<HTMLDivElement>(null);
   const searchParams = useSearchParams();
-  const router = useRouter();
 
   // TIP #15: URL-State Synchronization - Initialize from URL
   useEffect(() => {
@@ -53,7 +59,8 @@ export default function Home() {
     if (urlSearch && urlSearch !== search) {
       setSearch(urlSearch);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => {
     setMounted(true);
@@ -74,6 +81,7 @@ export default function Home() {
       window.history.replaceState(null, '', newUrl);
     }, 300);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, mounted]);
 
   const handleFetch = async (query = "", isNextPage = false) => {
@@ -87,7 +95,6 @@ export default function Home() {
     }
     
     setStatus(isNextPage ? "Fetching next page..." : "Querying Turso Edge DB...");
-    const start = performance.now();
     
     try {
       // TIP #4: Cursor Pagination Logic
@@ -96,7 +103,6 @@ export default function Home() {
       if (!res.ok) throw new Error("Database Query Failed");
       
       const { data: rows, latency, nextCursor: newCursor } = await res.json();
-      const end = performance.now();
       
       if (isNextPage) {
         setData(prev => [...prev, ...rows]);
@@ -107,8 +113,9 @@ export default function Home() {
       setNextCursor(newCursor);
       setDbLatency(latency);
       setStatus(`DB Query: ${latency}ms | Total Records Loaded: ${(isNextPage ? data.length + rows.length : rows.length).toLocaleString()}`);
-    } catch (err: any) {
-      setStatus("Error: " + err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setStatus("Error: " + message);
     } finally {
       setIsLoading(false);
       setIsFetchingNextPage(false);
@@ -135,6 +142,7 @@ export default function Home() {
     ) {
       handleFetch(search, true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastItemIndex, data.length, nextCursor, isFetchingNextPage, isLoading, search]);
 
   if (!mounted) return null;
@@ -251,7 +259,7 @@ export default function Home() {
                 </div>
               ) : data.length > 0 ? (
                 <div
-                  role="list"
+                  role="grid"
                   aria-label={`User list showing ${data.length.toLocaleString()} results`}
                   aria-rowcount={data.length}
                   style={{
@@ -265,7 +273,7 @@ export default function Home() {
                     return (
                       <div
                         key={virtualRow.key}
-                        role="listitem"
+                        role="row"
                         aria-rowindex={virtualRow.index + 1}
                         aria-label={`User ${row.name}, email ${row.email}`}
                         tabIndex={0}
@@ -305,7 +313,7 @@ export default function Home() {
                                   const { data } = await res.json();
                                   setDetailData(data);
                                 }
-                              } catch (e) {
+                              } catch {
                                 console.error('Failed to load details');
                               } finally {
                                 setIsLoadingDetail(false);

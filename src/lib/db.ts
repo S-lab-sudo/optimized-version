@@ -27,5 +27,5 @@ export const getDb = () => {
 
 // Exporting a proxy or just the getter is more robust for Edge
 export const db = {
-  execute: (stmt: any) => getDb().execute(stmt),
+  execute: (stmt: Parameters<Client["execute"]>[0]) => getDb().execute(stmt),
 };
