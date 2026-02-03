@@ -132,19 +132,9 @@ export default function Home() {
   const virtualItems = rowVirtualizer.getVirtualItems();
   const lastItemIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
 
-  // TIP #4: Infinite Scroll Trigger (Fixed for stability)
-  useEffect(() => {
-    if (
-      lastItemIndex >= data.length - 10 && 
-      nextCursor && 
-      !isFetchingNextPage && 
-      !isLoading
-    ) {
-      handleFetch(search, true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastItemIndex, data.length, nextCursor, isFetchingNextPage, isLoading, search]);
-
+  // REMOVED: Auto-Infinite Scroll Trigger that caused request flooding
+  // We are now switching to Manual Load + Hover Prefetching (Tip #6 & #9)
+  
   if (!mounted) return null;
 
   return (
@@ -258,75 +248,106 @@ export default function Home() {
                   ))}
                 </div>
               ) : data.length > 0 ? (
-                <div
-                  role="grid"
-                  aria-label={`User list showing ${data.length.toLocaleString()} results`}
-                  aria-rowcount={data.length}
-                  style={{
-                    height: `${rowVirtualizer.getTotalSize()}px`,
-                    width: '100%',
-                    position: 'relative',
-                  }}
-                >
-                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                    const row = data[virtualRow.index];
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        role="row"
-                        aria-rowindex={virtualRow.index + 1}
-                        aria-label={`User ${row.name}, email ${row.email}`}
-                        tabIndex={0}
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          height: `${virtualRow.size}px`,
-                          transform: `translateY(${virtualRow.start}px)`,
+                <>
+                  <div
+                    role="grid"
+                    aria-label={`User list showing ${data.length.toLocaleString()} results`}
+                    aria-rowcount={data.length}
+                    style={{
+                      height: `${rowVirtualizer.getTotalSize()}px`,
+                      width: '100%',
+                      position: 'relative',
+                    }}
+                  >
+                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const row = data[virtualRow.index];
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          role="row"
+                          aria-rowindex={virtualRow.index + 1}
+                          aria-label={`User ${row.name}, email ${row.email}`}
+                          tabIndex={0}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: `${virtualRow.size}px`,
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                          className="flex items-center px-10 border-b border-neutral-100 dark:border-neutral-800/10 hover:bg-emerald-500/5 focus:bg-emerald-500/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-colors duration-150"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.currentTarget.querySelector('button')?.click();
+                            }
+                          }}
+                        >
+                          <div className="w-32 font-mono text-[10px] text-neutral-400">#{row.id?.substring(0,8) || virtualRow.index}</div>
+                          <div className="flex-1 flex flex-col items-center">
+                            <span className="text-lg font-bold text-[#171717] dark:text-[#ededed]">{row.name}</span>
+                            <span className="text-xs text-neutral-400 font-medium">{row.email}</span>
+                          </div>
+                          <div className="w-48 text-right">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              className="h-10 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-neutral-400 hover:text-emerald-500 hover:bg-emerald-500/5 transition-all"
+                              onClick={async () => {
+                                setEditingRow(row);
+                                setIsLoadingDetail(true);
+                                try {
+                                  const res = await fetch(`/api/data/${row.id}`);
+                                  if (res.ok) {
+                                    const { data } = await res.json();
+                                    setDetailData(data);
+                                  }
+                                } catch {
+                                  console.error('Failed to load details');
+                                } finally {
+                                  setIsLoadingDetail(false);
+                                }
+                              }}
+                            >
+                              Details
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* TIP #6 & #9: Manual Load More + Hover Prefetching */}
+                  {nextCursor && (
+                    <div className="p-12 flex justify-center border-t border-neutral-100 dark:border-neutral-800/10 bg-neutral-50/30 dark:bg-neutral-900/30">
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="h-14 px-8 rounded-2xl font-bold tracking-tight border-neutral-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-neutral-800 hover:scale-[1.02] transition-all group"
+                        disabled={isFetchingNextPage}
+                        onMouseEnter={() => {
+                          if (!isFetchingNextPage && !isLoading) {
+                            handleFetch(search, true);
+                          }
                         }}
-                        className="flex items-center px-10 border-b border-neutral-100 dark:border-neutral-800/10 hover:bg-emerald-500/5 focus:bg-emerald-500/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-colors duration-150"
-                        onKeyDown={(e) => {
-                          // TIP #22: Focus Management - Enter key opens details
-                          if (e.key === 'Enter') {
-                            e.currentTarget.querySelector('button')?.click();
+                        onClick={() => {
+                          if (!isFetchingNextPage && !isLoading) {
+                            handleFetch(search, true);
                           }
                         }}
                       >
-                        <div className="w-32 font-mono text-[10px] text-neutral-400">#{row.id?.substring(0,8) || virtualRow.index}</div>
-                        <div className="flex-1 flex flex-col items-center">
-                          <span className="text-lg font-bold text-[#171717] dark:text-[#ededed]">{row.name}</span>
-                          <span className="text-xs text-neutral-400 font-medium">{row.email}</span>
+                        <div className="flex items-center gap-3">
+                          {isFetchingNextPage ? (
+                            <RefreshCcw className="w-4 h-4 animate-spin text-emerald-500" />
+                          ) : (
+                            <Settings2 className="w-4 h-4 text-neutral-400 group-hover:text-emerald-500 transition-colors" />
+                          )}
+                          <span>{isFetchingNextPage ? "Optimizing Stream..." : "Load More Discovery Data"}</span>
                         </div>
-                        <div className="w-48 text-right">
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            className="h-10 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-neutral-400 hover:text-emerald-500 hover:bg-emerald-500/5 transition-all"
-                            onClick={async () => {
-                              setEditingRow(row);
-                              setIsLoadingDetail(true);
-                              try {
-                                // TIP #5: Fetch full details only on demand
-                                const res = await fetch(`/api/data/${row.id}`);
-                                if (res.ok) {
-                                  const { data } = await res.json();
-                                  setDetailData(data);
-                                }
-                              } catch {
-                                console.error('Failed to load details');
-                              } finally {
-                                setIsLoadingDetail(false);
-                              }
-                            }}
-                          >
-                            Details
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      </Button>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center opacity-40 text-center space-y-6">
                   <div className="p-8 rounded-[2.5rem] bg-neutral-100 dark:bg-neutral-800">
