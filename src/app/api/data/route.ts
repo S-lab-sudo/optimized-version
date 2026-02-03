@@ -1,30 +1,34 @@
 import { NextResponse } from "next/server";
+import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
-// For Cloudflare, env vars may come from different sources
-function getEnvVar(name: string): string | undefined {
-  // Try process.env first (works in Node.js and some Edge configs)
-  if (typeof process !== 'undefined' && process.env && process.env[name]) {
-    return process.env[name];
-  }
-  return undefined;
+// Extend CloudflareEnv to include our custom vars
+interface Env {
+  TURSO_DATABASE_URL: string;
+  TURSO_AUTH_TOKEN: string;
 }
 
 async function queryTurso(sql: string, args: any[] = []) {
-  const rawUrl = getEnvVar('TURSO_DATABASE_URL');
-  const token = getEnvVar('TURSO_AUTH_TOKEN');
+  let rawUrl: string | undefined;
+  let token: string | undefined;
 
-  if (!rawUrl || !token) {
-    console.error("ENV CHECK:", { 
-      hasUrl: !!rawUrl, 
-      hasToken: !!token,
-      processEnvKeys: typeof process !== 'undefined' ? Object.keys(process.env || {}).slice(0, 10) : 'no process'
-    });
-    throw new Error("Missing database configuration. Check Cloudflare env vars.");
+  // Try Cloudflare bindings first
+  try {
+    const ctx = getRequestContext();
+    const env = ctx.env as Env;
+    rawUrl = env.TURSO_DATABASE_URL;
+    token = env.TURSO_AUTH_TOKEN;
+  } catch {
+    // Fallback to process.env for local development
+    rawUrl = process.env.TURSO_DATABASE_URL;
+    token = process.env.TURSO_AUTH_TOKEN;
   }
 
-  // Convert libsql:// to https:// for HTTP access
+  if (!rawUrl || !token) {
+    throw new Error("Missing database configuration");
+  }
+
   const url = rawUrl.replace("libsql://", "https://");
 
   const response = await fetch(url, {
@@ -40,7 +44,7 @@ async function queryTurso(sql: string, args: any[] = []) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Turso HTTP error: ${response.status} - ${text}`);
+    throw new Error(`Turso error: ${response.status} - ${text}`);
   }
 
   const data = await response.json();
