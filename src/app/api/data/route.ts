@@ -107,6 +107,14 @@ export async function GET(request: Request) {
       latency: Math.round(end - start),
       count: rows.length,
       nextCursor
+    }, {
+      headers: {
+        // TIP #17: Edge Caching - CDN can cache this for 60s
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        // TIP #10: JSON Compression hint (Cloudflare auto-compresses, but this helps)
+        'Content-Encoding': 'identity',
+        'Vary': 'Accept-Encoding',
+      }
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,16 @@ export default function Home() {
   const [memUsage, setMemUsage] = useState<number | undefined>(undefined);
 
   const parentRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // TIP #15: URL-State Synchronization - Initialize from URL
+  useEffect(() => {
+    const urlSearch = searchParams.get('q');
+    if (urlSearch && urlSearch !== search) {
+      setSearch(urlSearch);
+    }
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -58,6 +69,9 @@ export default function Home() {
     if (!mounted) return;
     const timer = setTimeout(() => {
       handleFetch(search, false);
+      // TIP #15: URL-State Synchronization - Update URL on search
+      const newUrl = search ? `?q=${encodeURIComponent(search)}` : window.location.pathname;
+      window.history.replaceState(null, '', newUrl);
     }, 300);
     return () => clearTimeout(timer);
   }, [search, mounted]);
@@ -237,6 +251,9 @@ export default function Home() {
                 </div>
               ) : data.length > 0 ? (
                 <div
+                  role="list"
+                  aria-label={`User list showing ${data.length.toLocaleString()} results`}
+                  aria-rowcount={data.length}
                   style={{
                     height: `${rowVirtualizer.getTotalSize()}px`,
                     width: '100%',
@@ -248,6 +265,10 @@ export default function Home() {
                     return (
                       <div
                         key={virtualRow.key}
+                        role="listitem"
+                        aria-rowindex={virtualRow.index + 1}
+                        aria-label={`User ${row.name}, email ${row.email}`}
+                        tabIndex={0}
                         style={{
                           position: 'absolute',
                           top: 0,
@@ -256,7 +277,13 @@ export default function Home() {
                           height: `${virtualRow.size}px`,
                           transform: `translateY(${virtualRow.start}px)`,
                         }}
-                        className="flex items-center px-10 border-b border-neutral-100 dark:border-neutral-800/10 hover:bg-emerald-500/5 transition-colors duration-150"
+                        className="flex items-center px-10 border-b border-neutral-100 dark:border-neutral-800/10 hover:bg-emerald-500/5 focus:bg-emerald-500/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-colors duration-150"
+                        onKeyDown={(e) => {
+                          // TIP #22: Focus Management - Enter key opens details
+                          if (e.key === 'Enter') {
+                            e.currentTarget.querySelector('button')?.click();
+                          }
+                        }}
                       >
                         <div className="w-32 font-mono text-[10px] text-neutral-400">#{row.id?.substring(0,8) || virtualRow.index}</div>
                         <div className="flex-1 flex flex-col items-center">
