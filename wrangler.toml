@@ -1,0 +1,8 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "optimized-version"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# These can stay here, but secrets like AUTH_TOKEN should stay in Cloudflare Dashboard for security
+TURSO_DATABASE_URL = "libsql://million-million1234.aws-ap-south-1.turso.io"
